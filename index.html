@@ -2215,28 +2215,85 @@
       els.nanoStatusBadge.className = `local-ai-badge ${type}`;
     }
 
+    function getLanguageModelApi() {
+      if ("LanguageModel" in globalThis) {
+        return {
+          api: globalThis.LanguageModel,
+          kind: "LanguageModel"
+        };
+      }
+
+      if (window.ai?.languageModel) {
+        return {
+          api: window.ai.languageModel,
+          kind: "window.ai.languageModel"
+        };
+      }
+
+      return null;
+    }
+
+    function normalizeLanguageModelAvailability(value) {
+      const normalized = String(value || "").toLowerCase();
+      if (normalized === "available" || normalized === "readily") return "available";
+      if (normalized === "downloadable" || normalized === "after-download") return "downloadable";
+      if (normalized === "downloading") return "downloading";
+      return "unavailable";
+    }
+
+    async function getLanguageModelAvailability(languageModel) {
+      if (typeof languageModel.api.availability === "function") {
+        return normalizeLanguageModelAvailability(await languageModel.api.availability());
+      }
+
+      if (typeof languageModel.api.capabilities === "function") {
+        const capabilities = await languageModel.api.capabilities();
+        return normalizeLanguageModelAvailability(capabilities?.available);
+      }
+
+      return "unavailable";
+    }
+
+    function updateNanoDownloadProgress(event) {
+      const loaded = Number(event.loaded || 0);
+      const total = Number(event.total || 0);
+      const percent = total > 1
+        ? Math.round((loaded / total) * 100)
+        : Math.round(loaded * 100);
+
+      els.nanoProgressBarFill.style.width = `${Math.max(0, Math.min(100, percent || 0))}%`;
+
+      if (total > 1) {
+        els.nanoProgressText.textContent = `下載進度：${percent}% (${(loaded / 1024 / 1024).toFixed(1)} MB / ${(total / 1024 / 1024).toFixed(1)} MB)`;
+      } else if (percent >= 100) {
+        els.nanoProgressText.textContent = "下載完成，正在解壓縮並載入模型...";
+      } else {
+        els.nanoProgressText.textContent = `下載進度：${percent}%`;
+      }
+    }
+
     async function detectGeminiNano() {
       // Copyright (c) FALO X TAAT x Force Cheng 2026/6/1. All rights reserved.
-      if (!window.ai || !window.ai.languageModel) {
-        updateNanoStatus("no", "不支援 (無 window.ai API)");
+      const languageModel = getLanguageModelApi();
+      if (!languageModel) {
+        updateNanoStatus("no", "不支援 (無 LanguageModel API)");
         els.downloadNanoBtn.disabled = true;
         els.runNanoButton.disabled = true;
         return "no";
       }
 
       try {
-        const capabilities = await window.ai.languageModel.capabilities();
-        const available = capabilities.available;
-        if (available === "readily") {
-          updateNanoStatus("ready", "可用 (Readily Available)");
+        const available = await getLanguageModelAvailability(languageModel);
+        if (available === "available") {
+          updateNanoStatus("ready", `可用 (${languageModel.kind})`);
           els.downloadNanoBtn.disabled = true;
           els.runNanoButton.disabled = false;
-        } else if (available === "after-download") {
-          updateNanoStatus("downloading", "需下載 (After Download)");
+        } else if (available === "downloadable" || available === "downloading") {
+          updateNanoStatus("downloading", `需下載 (${available})`);
           els.downloadNanoBtn.disabled = false;
           els.runNanoButton.disabled = true;
         } else {
-          updateNanoStatus("no", "不支援 (No Capability)");
+          updateNanoStatus("no", "不支援 (unavailable)");
           els.downloadNanoBtn.disabled = true;
           els.runNanoButton.disabled = true;
         }
@@ -2251,7 +2308,8 @@
 
     async function downloadGeminiNano() {
       // Copyright (c) FALO X TAAT x Force Cheng 2026/6/1. All rights reserved.
-      if (!window.ai || !window.ai.languageModel) {
+      const languageModel = getLanguageModelApi();
+      if (!languageModel) {
         showToast("本瀏覽器不支援 Chrome Built-in AI。");
         return;
       }
@@ -2263,13 +2321,9 @@
         els.nanoProgressText.textContent = "正在啟動下載與初始化模型...";
         els.nanoProgressBarFill.style.width = "0%";
 
-        const session = await window.ai.languageModel.create({
+        const session = await languageModel.api.create({
           monitor(m) {
-            m.addEventListener("downloadprogress", (e) => {
-              const progress = Math.round((e.loaded / e.total) * 100);
-              els.nanoProgressBarFill.style.width = `${progress}%`;
-              els.nanoProgressText.textContent = `下載進度：${progress}% (${(e.loaded / 1024 / 1024).toFixed(1)} MB / ${(e.total / 1024 / 1024).toFixed(1)} MB)`;
-            });
+            m.addEventListener("downloadprogress", updateNanoDownloadProgress);
           }
         });
 
@@ -2331,7 +2385,11 @@
       const startTime = Date.now();
       try {
         if (!nanoSession) {
-          nanoSession = await window.ai.languageModel.create();
+          const languageModel = getLanguageModelApi();
+          if (!languageModel) {
+            throw new Error("本瀏覽器沒有 LanguageModel API。");
+          }
+          nanoSession = await languageModel.api.create();
         }
 
         const response = await nanoSession.prompt(finalPrompt);

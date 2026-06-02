@@ -14,6 +14,11 @@ assert(sw.includes("ocr-component-v102"), "service worker cache should be bumped
 assert(html.includes('<option value="original">原檔</option>'), "image quality select should include original file option last");
 assert(html.includes("prepareImagePayload"), "script should prepare image payload through neutral helper");
 assert(html.includes("readOriginalImagePayload"), "script should support original image payload path");
+assert(html.includes("previewImageUrl"), "image preview should keep a durable object URL for popup preview");
+assert(!html.includes("image.onload = () => URL.revokeObjectURL"), "image preview should not revoke the popup image URL on thumbnail load");
+assert(html.includes('id="floatingZoomInBtn"'), "floating preview should include zoom in button");
+assert(html.includes('id="floatingZoomOutBtn"'), "floating preview should include zoom out button");
+assert(html.includes("setFloatingZoom"), "floating preview should implement zoom controls");
 
 assert(html.includes("匯總輸出"), "analysis prompt defaults should include 匯總輸出");
 assert(html.includes("彙整出最可能的版本"), "匯總輸出 prompt should ask for the most likely merged version");

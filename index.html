@@ -421,22 +421,38 @@
       border: 1px solid var(--line);
       cursor: move;
     }
-    .floating-window img {
+    .floating-image-viewport {
       width: 100%;
       height: 100%;
+      overflow: auto;
+      display: grid;
+      place-items: center;
+      padding: 42px 12px 12px;
+      cursor: default;
+    }
+    .floating-window img {
+      max-width: none;
+      max-height: none;
       object-fit: contain;
       pointer-events: none;
       user-select: none;
+      transform-origin: center center;
+      transition: transform 0.12s ease;
     }
-    .floating-close-btn {
+    .floating-toolbar {
       position: absolute;
       top: 8px;
       right: 8px;
+      display: flex;
+      gap: 6px;
+      z-index: 2010;
+    }
+    .floating-tool-btn {
       background: rgba(15, 23, 42, 0.6);
       color: #fff;
       border: none;
-      border-radius: 50%;
-      width: 24px;
+      border-radius: 999px;
+      min-width: 28px;
       height: 24px;
       display: flex;
       align-items: center;
@@ -444,14 +460,14 @@
       cursor: pointer;
       font-size: 14px;
       line-height: 1;
-      opacity: 0;
+      opacity: 0.92;
       transition: opacity 0.2s ease;
-      z-index: 2010;
+      padding: 0 8px;
     }
-    .floating-window:hover .floating-close-btn {
-      opacity: 1;
+    .floating-tool-btn:hover {
+      background: rgba(37, 99, 235, 0.85);
     }
-    .floating-close-btn:hover {
+    #floatingCloseBtn:hover {
       background: var(--danger);
     }
     .image-preview img {
@@ -896,8 +912,15 @@
 
   <!-- Floating Image Window -->
   <div class="floating-window" id="floatingWindow">
-    <button class="floating-close-btn" id="floatingCloseBtn" type="button" aria-label="Close floating preview">&times;</button>
-    <img id="floatingImg" src="" alt="Floating Preview">
+    <div class="floating-toolbar">
+      <button class="floating-tool-btn" id="floatingZoomOutBtn" type="button" aria-label="Zoom out">-</button>
+      <button class="floating-tool-btn" id="floatingZoomResetBtn" type="button" aria-label="Reset zoom">100%</button>
+      <button class="floating-tool-btn" id="floatingZoomInBtn" type="button" aria-label="Zoom in">+</button>
+      <button class="floating-tool-btn" id="floatingCloseBtn" type="button" aria-label="Close floating preview">&times;</button>
+    </div>
+    <div class="floating-image-viewport" id="floatingImageViewport">
+      <img id="floatingImg" src="" alt="Floating Preview">
+    </div>
   </div>
 
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
@@ -1003,6 +1026,8 @@
     let activeCurrencyMode = "dual";
     let dualOcrMode = false;
     let nanoSession = null;
+    let previewImageUrl = "";
+    let floatingZoom = 1;
 
     const els = {
       installButton: document.getElementById("installButton"),
@@ -1059,7 +1084,11 @@
       drawerTabContentPricing: document.getElementById("drawerTabContentPricing"),
       floatingWindow: document.getElementById("floatingWindow"),
       floatingCloseBtn: document.getElementById("floatingCloseBtn"),
+      floatingImageViewport: document.getElementById("floatingImageViewport"),
       floatingImg: document.getElementById("floatingImg"),
+      floatingZoomOutBtn: document.getElementById("floatingZoomOutBtn"),
+      floatingZoomResetBtn: document.getElementById("floatingZoomResetBtn"),
+      floatingZoomInBtn: document.getElementById("floatingZoomInBtn"),
       // Nano Elements
       nanoStatusBadge: document.getElementById("nanoStatusBadge"),
       detectNanoBtn: document.getElementById("detectNanoBtn"),
@@ -1246,8 +1275,8 @@
       let initialTop = 0;
 
       el.addEventListener("mousedown", (e) => {
-        // Prevent dragging when clicking the close button
-        if (e.target.closest(".floating-close-btn")) return;
+        // Keep toolbar buttons clickable while the preview window remains draggable.
+        if (e.target.closest(".floating-tool-btn")) return;
         
         // Prevent dragging when resizing at the bottom-right corner
         const rect = el.getBoundingClientRect();
@@ -1958,15 +1987,47 @@
     function setupImagePreview(file) {
       if (!file) return;
       if (!file.type.startsWith("image/")) {
+        releasePreviewImageUrl();
         els.imagePreview.textContent = "目前只預覽圖片檔。";
         return;
       }
-      const url = URL.createObjectURL(file);
+      releasePreviewImageUrl();
+      previewImageUrl = URL.createObjectURL(file);
       const image = document.createElement("img");
-      image.src = url;
+      image.src = previewImageUrl;
       image.alt = file.name;
-      image.onload = () => URL.revokeObjectURL(url);
       els.imagePreview.replaceChildren(image);
+    }
+
+    function releasePreviewImageUrl() {
+      if (!previewImageUrl) return;
+      URL.revokeObjectURL(previewImageUrl);
+      previewImageUrl = "";
+    }
+
+    function setFloatingZoom(nextZoom) {
+      floatingZoom = Math.max(0.25, Math.min(4, nextZoom));
+      els.floatingImg.style.transform = `scale(${floatingZoom})`;
+      els.floatingZoomResetBtn.textContent = `${Math.round(floatingZoom * 100)}%`;
+    }
+
+    function openFloatingPreview() {
+      if (!previewImageUrl) return;
+      const width = Math.min(820, window.innerWidth - 48);
+      const height = Math.min(640, window.innerHeight - 48);
+      els.floatingWindow.style.width = `${Math.max(320, width)}px`;
+      els.floatingWindow.style.height = `${Math.max(240, height)}px`;
+      els.floatingWindow.style.left = `${Math.max(12, Math.round((window.innerWidth - width) / 2))}px`;
+      els.floatingWindow.style.top = `${Math.max(12, Math.round((window.innerHeight - height) / 2))}px`;
+      els.floatingImg.src = previewImageUrl;
+      els.floatingImageViewport.scrollTop = 0;
+      els.floatingImageViewport.scrollLeft = 0;
+      els.floatingWindow.style.display = "block";
+      setFloatingZoom(1);
+    }
+
+    function closeFloatingPreview() {
+      els.floatingWindow.style.display = "none";
     }
 
     function canvasToPayloadBlob(canvas, type, quality) {
@@ -2878,16 +2939,11 @@
     }
 
     // Floating image preview window triggers
-    els.imagePreview.addEventListener("click", () => {
-      const img = els.imagePreview.querySelector("img");
-      if (img) {
-        els.floatingImg.src = img.src;
-        els.floatingWindow.style.display = "block";
-      }
-    });
-    els.floatingCloseBtn.addEventListener("click", () => {
-      els.floatingWindow.style.display = "none";
-    });
+    els.imagePreview.addEventListener("click", openFloatingPreview);
+    els.floatingCloseBtn.addEventListener("click", closeFloatingPreview);
+    els.floatingZoomOutBtn.addEventListener("click", () => setFloatingZoom(floatingZoom - 0.25));
+    els.floatingZoomResetBtn.addEventListener("click", () => setFloatingZoom(1));
+    els.floatingZoomInBtn.addEventListener("click", () => setFloatingZoom(floatingZoom + 0.25));
     initDraggableWindow(els.floatingWindow);
 
     els.topbarDualOcrBtn.addEventListener("click", () => toggleDualOcrMode());

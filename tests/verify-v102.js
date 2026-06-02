@@ -9,7 +9,7 @@ const sw = fs.readFileSync(path.join(root, "service-worker.js"), "utf8");
 
 assert(html.includes("v1.02"), "index.html should show version v1.02");
 assert(readme.includes("v1.02"), "README.md should document version v1.02");
-assert(sw.includes("ocr-component-v102"), "service worker cache should be bumped for v1.02");
+assert(sw.includes("ocr-component-v102-popup-preview"), "service worker cache should be bumped for the popup preview fix");
 
 assert(html.includes('<option value="original">原檔</option>'), "image quality select should include original file option last");
 assert(html.includes("prepareImagePayload"), "script should prepare image payload through neutral helper");

@@ -527,7 +527,7 @@
   <header class="topbar">
     <div class="topbar-inner">
       <div>
-        <h1>FALO OCR Workbench <span style="font-size: 13px; color: var(--accent);">v1.01</span></h1>
+        <h1>FALO OCR Workbench <span style="font-size: 13px; color: var(--accent);">v1.02</span></h1>
         <p class="subtitle">獨立 PWA 元件：圖片 + OCR 操作 Prompt → 可編修文字結果。</p>
       </div>
       <div class="toolbar-actions">
@@ -555,6 +555,7 @@
             <option value="768">低</option>
             <option value="1280" selected>中</option>
             <option value="1600">高</option>
+            <option value="original">原檔</option>
           </select>
         </div>
         <div class="field">
@@ -807,7 +808,7 @@
               <div><strong>API 執行耗時：</strong> <span id="detailLatency"></span> ms</div>
               <div><strong>影像檔名：</strong> <span id="detailFileName"></span></div>
               <div><strong>影像原始大小：</strong> <span id="detailOrigSize"></span></div>
-              <div><strong>影像優化大小：</strong> <span id="detailOptSize"></span> (<span id="detailDims"></span>)</div>
+              <div><strong>送出影像大小：</strong> <span id="detailOptSize"></span> (<span id="detailDims"></span>)</div>
               <div><strong>真實輸入 Tokens：</strong> <span id="detailPromptTokens"></span></div>
               <div><strong>真實輸出 Tokens：</strong> <span id="detailOutputTokens"></span></div>
               <div><strong>總共計費 Tokens：</strong> <span id="detailTotalTokens"></span></div>
@@ -912,7 +913,7 @@
       selectedModelB: "falo_ocr_selected_model_b_v01",
       selectedLongSide: "falo_ocr_selected_longside_v01",
       dualOcrMode: "falo_ocr_dual_mode_v01",
-      nanoTemplates: "falo_nano_prompt_templates_v101",
+      nanoTemplates: "falo_nano_prompt_templates_v102",
       selectedNanoTemplate: "falo_nano_selected_template_v101"
     };
 
@@ -984,6 +985,13 @@
         title: "繁簡轉換與校正",
         description: "將 OCR 結果轉為繁體中文，並修正常見辨識錯字。",
         prompt: "請將以下辨識出的文字統一轉換為繁體中文，修正明顯的文字錯誤與語病，並保持原文段落結構：\n\n【辨識文字】\n{{RESULT_A}}",
+        status: "stable"
+      },
+      {
+        id: "merged-output",
+        title: "匯總輸出",
+        description: "比對 OCR 結果 A/B 後，彙整出最可能、最適合書面使用的版本。",
+        prompt: "請比對以下兩個 OCR 辨識結果的文字後，彙整出最可能的版本。\n\n【辨識模型資訊】\n- 結果 A 模型：{{MODEL_A}}\n- 結果 B 模型：{{MODEL_B}}\n\n【結果 A】\n{{RESULT_A}}\n\n【結果 B】\n{{RESULT_B}}\n\n請輸出：\n1. 最可能的完整整合版本\n2. 有疑義或需要人工確認的地方\n3. A/B 差異對整合判斷的影響",
         status: "stable"
       }
     ];
@@ -1307,7 +1315,7 @@
         apiKeyMasked: details.apiKeyMasked || "",
         originalFileName: details.originalFileName || "",
         originalFileSize: details.originalFileSize || 0,
-        compressedFileSize: details.compressedFileSize || 0,
+        preparedFileSize: details.preparedFileSize || 0,
         imageWidth: details.imageWidth || 0,
         imageHeight: details.imageHeight || 0,
         promptSnippet: details.promptSnippet || "",
@@ -1462,7 +1470,7 @@
       document.getElementById("detailLatency").textContent = log.latencyMs || "0";
       document.getElementById("detailFileName").textContent = log.originalFileName || "N/A";
       document.getElementById("detailOrigSize").textContent = log.originalFileSize ? (log.originalFileSize + " bytes") : "N/A";
-      document.getElementById("detailOptSize").textContent = log.compressedFileSize ? (log.compressedFileSize + " bytes") : "N/A";
+      document.getElementById("detailOptSize").textContent = log.preparedFileSize ? (log.preparedFileSize + " bytes") : "N/A";
       document.getElementById("detailDims").textContent = (log.imageWidth && log.imageHeight) ? `${log.imageWidth}x${log.imageHeight}` : "N/A";
       document.getElementById("detailPromptTokens").textContent = log.promptTokens || "0";
       document.getElementById("detailOutputTokens").textContent = log.candidatesTokens || "0";
@@ -1494,7 +1502,7 @@
       
       const columns = [
         "id", "timestamp", "action", "model", "apiKeyMasked", 
-        "originalFileName", "originalFileSize", "compressedFileSize", 
+        "originalFileName", "originalFileSize", "preparedFileSize", 
         "imageWidth", "imageHeight", "promptSnippet", "ocrResultSnippet", 
         "latencyMs", "httpStatus", "promptTokens", "candidatesTokens", 
         "totalTokens", "estCostUsd", "rawResponse", "rawRequest"
@@ -1502,7 +1510,7 @@
       
       const headers = [
         "交易編號(ID)", "時間戳記(Timestamp)", "動作(Action)", "模型(Model)", "金鑰遮罩(APIKeyMasked)", 
-        "原始檔名(OriginalFileName)", "原始大小(OriginalFileSize)", "壓縮大小(CompressedFileSize)", 
+        "原始檔名(OriginalFileName)", "原始大小(OriginalFileSize)", "送出大小(PreparedFileSize)", 
         "影像寬度(ImageWidth)", "影像高度(ImageHeight)", "Prompt內容(PromptSnippet)", "辨識結果(OcrResultSnippet)", 
         "耗時毫秒(LatencyMs)", "HTTP狀態碼(HttpStatus)", "輸入Tokens(PromptTokens)", "輸出Tokens(CandidatesTokens)", 
         "總共Tokens(TotalTokens)", "估計費用USD(EstCostUsd)", "API回應Payload(RawResponse)", "API請求Payload(RawRequest)"
@@ -1543,7 +1551,7 @@
           const keyI = idx(["金鑰遮罩(APIKeyMasked)", "apiKeyMasked"]);
           const origNameI = idx(["原始檔名(OriginalFileName)", "originalFileName"]);
           const origSizeI = idx(["原始大小(OriginalFileSize)", "originalFileSize"]);
-          const compSizeI = idx(["壓縮大小(CompressedFileSize)", "compressedFileSize"]);
+          const preparedSizeI = idx(["送出大小(PreparedFileSize)", "preparedFileSize"]);
           const wI = idx(["影像寬度(ImageWidth)", "imageWidth"]);
           const hI = idx(["影像高度(ImageHeight)", "imageHeight"]);
           const promptI = idx(["Prompt內容(PromptSnippet)", "promptSnippet"]);
@@ -1569,7 +1577,7 @@
             apiKeyMasked: keyI !== -1 ? (row[keyI] || "") : "",
             originalFileName: origNameI !== -1 ? (row[origNameI] || "") : "",
             originalFileSize: origSizeI !== -1 ? Number(row[origSizeI] || 0) : 0,
-            compressedFileSize: compSizeI !== -1 ? Number(row[compSizeI] || 0) : 0,
+            preparedFileSize: preparedSizeI !== -1 ? Number(row[preparedSizeI] || 0) : 0,
             imageWidth: wI !== -1 ? Number(row[wI] || 0) : 0,
             imageHeight: hI !== -1 ? Number(row[hI] || 0) : 0,
             promptSnippet: promptI !== -1 ? (row[promptI] || "") : "",
@@ -1961,14 +1969,42 @@
       els.imagePreview.replaceChildren(image);
     }
 
-    // Canvas WebP compression engine
-    function canvasToBlob(canvas, type, quality) {
+    function canvasToPayloadBlob(canvas, type, quality) {
       return new Promise((resolve, reject) => {
-        canvas.toBlob((blob) => blob ? resolve(blob) : reject(new Error("Canvas 壓縮失敗")), type, quality);
+        canvas.toBlob((blob) => blob ? resolve(blob) : reject(new Error("影像準備失敗")), type, quality);
       });
     }
 
-    async function optimizeImage(file, maxLongSide) {
+    async function readBlobAsBase64(blob) {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result).split(",")[1] || "");
+        reader.onerror = reject;
+        reader.readAsDataURL(blob);
+      });
+    }
+
+    async function readOriginalImagePayload(file) {
+      const bitmap = await createImageBitmap(file);
+      const width = bitmap.width;
+      const height = bitmap.height;
+      if (typeof bitmap.close === "function") bitmap.close();
+      return {
+        base64: await readBlobAsBase64(file),
+        mimeType: file.type || "image/png",
+        width,
+        height,
+        size: file.size,
+        deliveryMode: "original"
+      };
+    }
+
+    async function prepareImagePayload(file, qualityMode) {
+      if (qualityMode === "original") {
+        return readOriginalImagePayload(file);
+      }
+
+      const maxLongSide = Number(qualityMode || 1280);
       // Copyright (c) FALO X TAAT x Force Cheng 2026/6/1. All rights reserved.
       const bitmap = await createImageBitmap(file);
       const longSide = Math.max(bitmap.width, bitmap.height);
@@ -1989,21 +2025,14 @@
       if (maxLongSide <= 768) quality = 0.85;
       else if (maxLongSide >= 1600) quality = 0.90;
 
-      const blob = await canvasToBlob(canvas, "image/webp", quality);
-      const base64 = await new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () => resolve(String(reader.result).split(",")[1] || "");
-        reader.onerror = reject;
-        reader.readAsDataURL(blob);
-      });
+      const blob = await canvasToPayloadBlob(canvas, "image/webp", quality);
       return {
-        base64,
+        base64: await readBlobAsBase64(blob),
         mimeType: "image/webp",
         width: canvas.width,
         height: canvas.height,
         size: blob.size,
-        scale,
-        quality
+        deliveryMode: "prepared"
       };
     }
 
@@ -2127,7 +2156,7 @@
       const modelA = els.modelSelect.value;
       const modelB = els.modelSelectB.value;
       const prompt = els.promptTemplate.value.trim();
-      const maxLongSide = Number(els.longSideSelect.value || 1280);
+      const imageQualityMode = els.longSideSelect.value || "1280";
 
       if (!apiKey) {
         showToast("錯誤：請先輸入 Gemini API 金鑰。");
@@ -2143,22 +2172,22 @@
       }
 
       els.runOcrButton.disabled = true;
-      els.runOcrButton.textContent = "⚡ 影像壓縮中...";
+      els.runOcrButton.textContent = "⚡ 影像準備中...";
 
       const apiKeyMasked = apiKey.length > 10 ? (apiKey.substring(0, 6) + "..." + apiKey.substring(apiKey.length - 4)) : "Invalid";
 
       let imageInfo = null;
       try {
-        imageInfo = await optimizeImage(file, maxLongSide);
+        imageInfo = await prepareImagePayload(file, imageQualityMode);
       } catch (error) {
-        showToast(`影像壓縮失敗: ${error.message}`);
+        showToast(`影像準備失敗: ${error.message}`);
         els.runOcrButton.disabled = false;
         els.runOcrButton.textContent = "⚡ 開始 Gemini OCR 辨識";
         return;
       }
 
       els.runOcrButton.textContent = dualOcrMode ? "⚡ 雙 OCR 辨識中..." : "⚡ Gemini 辨識中...";
-      showToast(`已優化 WebP (${imageInfo.width}x${imageInfo.height})，發送請求中...`);
+      showToast("圖片已準備，送出辨識中...");
 
       if (!dualOcrMode) {
         const startTime = Date.now();
@@ -2187,7 +2216,7 @@
               apiKeyMasked,
               originalFileName: file.name,
               originalFileSize: file.size,
-              compressedFileSize: imageInfo.size,
+              preparedFileSize: imageInfo.size,
               imageWidth: imageInfo.width,
               imageHeight: imageInfo.height,
               promptSnippet: prompt,
@@ -2199,7 +2228,7 @@
               totalTokens,
               estCostUsd,
               rawResponse: res.rawText,
-              rawRequest: JSON.stringify({ model: modelA, maxLongSide, promptText: prompt })
+              rawRequest: JSON.stringify({ model: modelA, imageQualityMode, promptText: prompt })
             });
           } else {
             throw new Error("未接收到有效文字，請檢查 Prompt 或圖片內容。");
@@ -2222,7 +2251,7 @@
             apiKeyMasked,
             originalFileName: file.name,
             originalFileSize: file.size,
-            compressedFileSize: imageInfo.size,
+            preparedFileSize: imageInfo.size,
             imageWidth: imageInfo.width,
             imageHeight: imageInfo.height,
             promptSnippet: prompt,
@@ -2234,7 +2263,7 @@
             totalTokens: 0,
             estCostUsd: 0,
             rawResponse: JSON.stringify({ error: error.message || error }),
-            rawRequest: JSON.stringify({ model: modelA, maxLongSide, promptText: prompt })
+            rawRequest: JSON.stringify({ model: modelA, imageQualityMode, promptText: prompt })
           });
         } finally {
           els.runOcrButton.disabled = false;
@@ -2282,7 +2311,7 @@
             apiKeyMasked,
             originalFileName: file.name,
             originalFileSize: file.size,
-            compressedFileSize: imageInfo.size,
+            preparedFileSize: imageInfo.size,
             imageWidth: imageInfo.width,
             imageHeight: imageInfo.height,
             promptSnippet: prompt,
@@ -2294,7 +2323,7 @@
             totalTokens,
             estCostUsd,
             rawResponse: res.rawText,
-            rawRequest: JSON.stringify({ model: modelA, maxLongSide, promptText: prompt })
+            rawRequest: JSON.stringify({ model: modelA, imageQualityMode, promptText: prompt })
           });
         } else {
           const err = resA.reason;
@@ -2310,7 +2339,7 @@
             apiKeyMasked,
             originalFileName: file.name,
             originalFileSize: file.size,
-            compressedFileSize: imageInfo.size,
+            preparedFileSize: imageInfo.size,
             imageWidth: imageInfo.width,
             imageHeight: imageInfo.height,
             promptSnippet: prompt,
@@ -2322,7 +2351,7 @@
             totalTokens: 0,
             estCostUsd: 0,
             rawResponse: JSON.stringify({ error: err.message || err }),
-            rawRequest: JSON.stringify({ model: modelA, maxLongSide, promptText: prompt })
+            rawRequest: JSON.stringify({ model: modelA, imageQualityMode, promptText: prompt })
           });
         }
 
@@ -2346,7 +2375,7 @@
             apiKeyMasked,
             originalFileName: file.name,
             originalFileSize: file.size,
-            compressedFileSize: imageInfo.size,
+            preparedFileSize: imageInfo.size,
             imageWidth: imageInfo.width,
             imageHeight: imageInfo.height,
             promptSnippet: prompt,
@@ -2358,7 +2387,7 @@
             totalTokens,
             estCostUsd,
             rawResponse: res.rawText,
-            rawRequest: JSON.stringify({ model: modelB, maxLongSide, promptText: prompt })
+            rawRequest: JSON.stringify({ model: modelB, imageQualityMode, promptText: prompt })
           });
         } else {
           const err = resB.reason;
@@ -2374,7 +2403,7 @@
             apiKeyMasked,
             originalFileName: file.name,
             originalFileSize: file.size,
-            compressedFileSize: imageInfo.size,
+            preparedFileSize: imageInfo.size,
             imageWidth: imageInfo.width,
             imageHeight: imageInfo.height,
             promptSnippet: prompt,
@@ -2386,7 +2415,7 @@
             totalTokens: 0,
             estCostUsd: 0,
             rawResponse: JSON.stringify({ error: err.message || err }),
-            rawRequest: JSON.stringify({ model: modelB, maxLongSide, promptText: prompt })
+            rawRequest: JSON.stringify({ model: modelB, imageQualityMode, promptText: prompt })
           });
         }
 
@@ -2467,7 +2496,7 @@
       if (total > 1) {
         els.nanoProgressText.textContent = `下載進度：${percent}% (${(loaded / 1024 / 1024).toFixed(1)} MB / ${(total / 1024 / 1024).toFixed(1)} MB)`;
       } else if (percent >= 100) {
-        els.nanoProgressText.textContent = "下載完成，正在解壓縮並載入模型...";
+        els.nanoProgressText.textContent = "下載完成，正在載入模型...";
       } else {
         els.nanoProgressText.textContent = `下載進度：${percent}%`;
       }

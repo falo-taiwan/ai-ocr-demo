@@ -1,4 +1,4 @@
-const CACHE_NAME = "falo-prompt-manager-v03-20260602-ocr-component2";
+const CACHE_NAME = "falo-prompt-manager-v03-20260602-ocr-component-v101";
 const APP_SHELL = [
   "./",
   "./index.html",

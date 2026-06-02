@@ -527,7 +527,7 @@
   <header class="topbar">
     <div class="topbar-inner">
       <div>
-        <h1>FALO OCR Workbench</h1>
+        <h1>FALO OCR Workbench <span style="font-size: 13px; color: var(--accent);">v1.01</span></h1>
         <p class="subtitle">獨立 PWA 元件：圖片 + OCR 操作 Prompt → 可編修文字結果。</p>
       </div>
       <div class="toolbar-actions">
@@ -699,14 +699,23 @@
 
           <div class="template-grid" style="margin-top: 8px;">
             <div class="field">
-              <label for="nanoPromptSelect">選擇本地 AI 功能預設</label>
-              <select id="nanoPromptSelect">
-                <option value="compare">比對結果 A 與 B 的文字差異 (雙 OCR 適用)</option>
-                <option value="summary">摘要提取與整理 (單/雙 OCR)</option>
-                <option value="translate">繁簡轉換與校正</option>
-                <option value="custom">自訂分析指令</option>
-              </select>
+              <label for="nanoPromptSelect">選擇分析 Prompt 模板</label>
+              <select id="nanoPromptSelect"></select>
             </div>
+            <div class="field">
+              <label for="nanoTemplateTitle">編輯模板名稱</label>
+              <input id="nanoTemplateTitle" type="text" placeholder="分析模板名稱">
+            </div>
+          </div>
+          <div class="field">
+            <label for="nanoTemplateDescription">編輯用途說明</label>
+            <input id="nanoTemplateDescription" type="text" placeholder="例如：雙 OCR 差異比對、模型 A 雲端審查">
+          </div>
+          <div class="actions" style="margin-top: 8px;">
+            <button class="button primary" id="saveNanoTemplateButton" type="button">💾 儲存分析 Prompt</button>
+            <button class="button" id="createNanoTemplateButton" type="button">➕ 新增分析 Prompt</button>
+            <button class="button danger" id="deleteNanoTemplateButton" type="button">🗑️ 刪除此分析 Prompt</button>
+            <button class="button" id="restoreNanoTemplatesButton" type="button">還原分析預設</button>
           </div>
 
           <div class="field">
@@ -716,6 +725,7 @@
 
           <div style="display: flex; gap: 10px; margin-top: 10px; width: 100%; flex-wrap: wrap;">
             <button class="button primary" id="runNanoButton" type="button" style="flex: 1; min-width: 200px; min-height: 40px;" disabled>⚡ 啟動 Chrome Nano 比對分析</button>
+            <button class="button primary" id="runModelAAnalysisButton" type="button" style="flex: 1; min-width: 200px; min-height: 40px; background: #2563eb; border-color: #2563eb;">☁️ 用模型 A 雲端分析</button>
             <button class="button" id="copyNanoPromptBtn" type="button" style="flex: 1; min-width: 200px; min-height: 40px; border-color: var(--accent); color: var(--accent); background: var(--accent-soft);">📋 複製組合字串 (手動貼給其他 AI)</button>
           </div>
 
@@ -901,7 +911,9 @@
       selectedModel: "falo_ocr_selected_model_v01",
       selectedModelB: "falo_ocr_selected_model_b_v01",
       selectedLongSide: "falo_ocr_selected_longside_v01",
-      dualOcrMode: "falo_ocr_dual_mode_v01"
+      dualOcrMode: "falo_ocr_dual_mode_v01",
+      nanoTemplates: "falo_nano_prompt_templates_v101",
+      selectedNanoTemplate: "falo_nano_selected_template_v101"
     };
 
     const DEFAULT_TEMPLATES = [
@@ -952,7 +964,32 @@
       }
     ];
 
+    const DEFAULT_NANO_TEMPLATES = [
+      {
+        id: "compare-ab",
+        title: "比對結果 A 與 B 的文字差異",
+        description: "雙 OCR 模式：比較模型 A 與模型 B 的辨識差異。",
+        prompt: "請比對以下兩個 OCR 辨識結果的文字差異。\n\n【辨識模型資訊】\n- 結果 A 模型：{{MODEL_A}}\n- 結果 B 模型：{{MODEL_B}}\n\n請詳細列出不同點與字元遺漏或辨識錯字，並「盡量以 Markdown 表格」呈現差異對照（例如欄位包含「項目/差異處」、「結果 A ({{MODEL_A}})」、「結果 B ({{MODEL_B}})」、「分析備註」）。\n\n【結果 A】\n{{RESULT_A}}\n\n【結果 B】\n{{RESULT_B}}",
+        status: "stable"
+      },
+      {
+        id: "summary-a",
+        title: "摘要提取與整理",
+        description: "單 OCR 或雙 OCR：先整理結果 A 的重點。",
+        prompt: "請針對辨識出來的文字進行摘要整理，並以乾淨的結構化條列格式輸出關鍵資訊：\n\n【辨識文字】\n{{RESULT_A}}",
+        status: "stable"
+      },
+      {
+        id: "traditional-correction",
+        title: "繁簡轉換與校正",
+        description: "將 OCR 結果轉為繁體中文，並修正常見辨識錯字。",
+        prompt: "請將以下辨識出的文字統一轉換為繁體中文，修正明顯的文字錯誤與語病，並保持原文段落結構：\n\n【辨識文字】\n{{RESULT_A}}",
+        status: "stable"
+      }
+    ];
+
     let templates = loadTemplates();
+    let nanoTemplates = loadNanoTemplates();
     let deferredInstallPrompt = null;
     let selectedImageFile = null;
     let activeCurrencyMode = "dual";
@@ -1024,8 +1061,15 @@
       nanoProgressBarFill: document.getElementById("nanoProgressBarFill"),
       nanoProgressText: document.getElementById("nanoProgressText"),
       nanoPromptSelect: document.getElementById("nanoPromptSelect"),
+      nanoTemplateTitle: document.getElementById("nanoTemplateTitle"),
+      nanoTemplateDescription: document.getElementById("nanoTemplateDescription"),
       nanoPromptInput: document.getElementById("nanoPromptInput"),
+      saveNanoTemplateButton: document.getElementById("saveNanoTemplateButton"),
+      createNanoTemplateButton: document.getElementById("createNanoTemplateButton"),
+      deleteNanoTemplateButton: document.getElementById("deleteNanoTemplateButton"),
+      restoreNanoTemplatesButton: document.getElementById("restoreNanoTemplatesButton"),
       runNanoButton: document.getElementById("runNanoButton"),
+      runModelAAnalysisButton: document.getElementById("runModelAAnalysisButton"),
       copyNanoPromptBtn: document.getElementById("copyNanoPromptBtn"),
       nanoResult: document.getElementById("nanoResult")
     };
@@ -1046,6 +1090,128 @@
 
     function saveTemplates() {
       localStorage.setItem(STORAGE_KEYS.templates, JSON.stringify(templates));
+    }
+
+    function loadNanoTemplates() {
+      try {
+        const stored = localStorage.getItem(STORAGE_KEYS.nanoTemplates);
+        const parsed = stored ? JSON.parse(stored) : null;
+        return Array.isArray(parsed) && parsed.length ? parsed : clone(DEFAULT_NANO_TEMPLATES);
+      } catch (error) {
+        return clone(DEFAULT_NANO_TEMPLATES);
+      }
+    }
+
+    function saveNanoTemplates() {
+      localStorage.setItem(STORAGE_KEYS.nanoTemplates, JSON.stringify(nanoTemplates));
+    }
+
+    function selectedNanoTemplate() {
+      return nanoTemplates.find((template) => template.id === els.nanoPromptSelect.value) || nanoTemplates[0];
+    }
+
+    function renderNanoTemplates() {
+      const selected = localStorage.getItem(STORAGE_KEYS.selectedNanoTemplate) || nanoTemplates[0]?.id || "";
+      els.nanoPromptSelect.replaceChildren();
+      nanoTemplates.forEach((template) => {
+        const option = document.createElement("option");
+        option.value = template.id;
+        option.textContent = template.title;
+        els.nanoPromptSelect.append(option);
+      });
+      if (nanoTemplates.some((template) => template.id === selected)) {
+        els.nanoPromptSelect.value = selected;
+      }
+      loadSelectedNanoTemplate();
+    }
+
+    function loadSelectedNanoTemplate() {
+      const template = selectedNanoTemplate();
+      if (!template) return;
+      els.nanoTemplateTitle.value = template.title || "";
+      els.nanoTemplateDescription.value = template.description || "";
+      els.nanoPromptInput.value = template.prompt || "";
+      localStorage.setItem(STORAGE_KEYS.selectedNanoTemplate, template.id);
+    }
+
+    function saveCurrentNanoTemplate() {
+      const template = selectedNanoTemplate();
+      if (!template) return;
+      const title = els.nanoTemplateTitle.value.trim();
+      const prompt = els.nanoPromptInput.value.trim();
+      if (!title || !prompt) {
+        showToast("分析 Prompt 模板需要名稱與內容。");
+        return;
+      }
+      template.title = title;
+      template.description = els.nanoTemplateDescription.value.trim();
+      template.prompt = prompt;
+      template.status = template.status || "stable";
+      saveNanoTemplates();
+      renderNanoTemplates();
+      els.nanoPromptSelect.value = template.id;
+      loadSelectedNanoTemplate();
+      showToast("已儲存分析 Prompt 模板。");
+      addLogEntry("儲存分析 Prompt", { model: title, rawResponse: `ID: ${template.id}` });
+    }
+
+    function createNewNanoTemplate() {
+      const title = els.nanoTemplateTitle.value.trim() || "自訂分析 Prompt";
+      const prompt = els.nanoPromptInput.value.trim();
+      if (!prompt) {
+        showToast("請先輸入分析 Prompt 內容。");
+        return;
+      }
+      const baseId = slugify(title, "nano-analysis");
+      const existingIds = nanoTemplates.map((template) => template.id);
+      let id = baseId;
+      let index = 2;
+      while (existingIds.includes(id)) {
+        id = `${baseId}-${index}`;
+        index += 1;
+      }
+      const template = {
+        id,
+        title,
+        description: els.nanoTemplateDescription.value.trim(),
+        prompt,
+        status: "custom"
+      };
+      nanoTemplates.push(template);
+      saveNanoTemplates();
+      renderNanoTemplates();
+      els.nanoPromptSelect.value = id;
+      loadSelectedNanoTemplate();
+      showToast("已新增分析 Prompt 模板。");
+      addLogEntry("新增分析 Prompt", { model: title, rawResponse: `ID: ${id}` });
+    }
+
+    function deleteCurrentNanoTemplate() {
+      const template = selectedNanoTemplate();
+      if (!template) return;
+      if (nanoTemplates.length <= 1) {
+        showToast("至少需要保留一組分析 Prompt 模板。");
+        return;
+      }
+      const confirmed = window.confirm(`確定刪除分析 Prompt 模板「${template.title}」？`);
+      if (!confirmed) return;
+      nanoTemplates = nanoTemplates.filter((item) => item.id !== template.id);
+      saveNanoTemplates();
+      localStorage.removeItem(STORAGE_KEYS.selectedNanoTemplate);
+      renderNanoTemplates();
+      showToast("已刪除分析 Prompt 模板。");
+      addLogEntry("刪除分析 Prompt", { model: template.title, rawResponse: `ID: ${template.id}` });
+    }
+
+    function restoreDefaultNanoTemplates() {
+      const confirmed = window.confirm("確定還原分析 Prompt 預設？目前分析模板清單會被全覆蓋。");
+      if (!confirmed) return;
+      nanoTemplates = clone(DEFAULT_NANO_TEMPLATES);
+      saveNanoTemplates();
+      localStorage.removeItem(STORAGE_KEYS.selectedNanoTemplate);
+      renderNanoTemplates();
+      showToast("已還原分析 Prompt 預設。");
+      addLogEntry("還原分析 Prompt", { model: "DEFAULT_NANO_TEMPLATES", rawResponse: `${nanoTemplates.length} 組預設` });
     }
 
     function calculateCost(model, inputTokens, outputTokens) {
@@ -1866,9 +2032,9 @@
         els.labelResultA.textContent = "可編修結果";
       }
       // Re-trigger Nano preset check because dual mode impacts which variables are active
-      if (els.nanoPromptSelect.value === "compare" && !dualOcrMode) {
+      if (els.nanoPromptSelect.value === "compare-ab" && !dualOcrMode) {
         // Switch preset if dual mode is turned off and it was set to compare
-        els.nanoPromptSelect.value = "summary";
+        els.nanoPromptSelect.value = "summary-a";
         els.nanoPromptSelect.dispatchEvent(new Event("change"));
       }
     }
@@ -1897,6 +2063,41 @@
           }],
           generationConfig: {
             responseMimeType: (selectedTemplate().outputFormat === "json_like" || prompt.toLowerCase().includes("json")) ? "application/json" : "text/plain",
+            temperature: 0
+          }
+        })
+      });
+
+      const text = await response.text();
+      const httpStatus = response.status;
+      if (!response.ok) {
+        throw new Error(`API 錯誤 (${response.status}): ${text}`);
+      }
+
+      const data = JSON.parse(text);
+      const extractedText = data.candidates?.[0]?.content?.parts?.[0]?.text || "";
+      return {
+        data,
+        extractedText,
+        httpStatus,
+        rawText: text
+      };
+    }
+
+    async function callGeminiTextApi(apiKey, model, prompt) {
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`;
+      const response = await fetch(url, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-goog-api-key": apiKey
+        },
+        body: JSON.stringify({
+          contents: [{
+            parts: [{ text: prompt }]
+          }],
+          generationConfig: {
+            responseMimeType: "text/plain",
             temperature: 0
           }
         })
@@ -2361,22 +2562,11 @@
 
     async function runNanoComparison() {
       // Copyright (c) FALO X TAAT x Force Cheng 2026/6/1. All rights reserved.
-      let promptTemplateText = els.nanoPromptInput.value.trim();
-      if (!promptTemplateText) {
+      const finalPrompt = buildAnalysisPrompt();
+      if (!finalPrompt) {
         showToast("錯誤：比對分析 Prompt 不能為空。");
         return;
       }
-
-      const resA = els.ocrResult.value.trim();
-      const resB = els.ocrResultB.value.trim();
-      const modelA = els.modelSelect.value;
-      const modelB = els.modelSelectB.value;
-
-      let finalPrompt = promptTemplateText
-        .replaceAll("{{RESULT_A}}", resA)
-        .replaceAll("{{RESULT_B}}", resB)
-        .replaceAll("{{MODEL_A}}", modelA)
-        .replaceAll("{{MODEL_B}}", modelB);
 
       els.runNanoButton.disabled = true;
       els.runNanoButton.textContent = "⚡ 比對分析中...";
@@ -2414,6 +2604,95 @@
       } finally {
         els.runNanoButton.disabled = false;
         els.runNanoButton.textContent = "⚡ 啟動 Chrome Nano 比對分析";
+      }
+    }
+
+    function buildAnalysisPrompt() {
+      const promptTemplateText = els.nanoPromptInput.value.trim();
+      if (!promptTemplateText) return "";
+      const resA = els.ocrResult.value.trim();
+      const resB = els.ocrResultB.value.trim();
+      const modelA = els.modelSelect.value;
+      const modelB = els.modelSelectB.value;
+
+      return promptTemplateText
+        .replaceAll("{{RESULT_A}}", resA)
+        .replaceAll("{{RESULT_B}}", resB)
+        .replaceAll("{{MODEL_A}}", modelA)
+        .replaceAll("{{MODEL_B}}", modelB);
+    }
+
+    async function runModelACloudAnalysis() {
+      const apiKey = els.geminiKey.value.trim();
+      const modelA = els.modelSelect.value;
+      const finalPrompt = buildAnalysisPrompt();
+
+      if (!apiKey) {
+        showToast("錯誤：請先輸入 Gemini API 金鑰。");
+        return;
+      }
+      if (!finalPrompt) {
+        showToast("錯誤：分析 Prompt 不能為空。");
+        return;
+      }
+      if (!els.ocrResult.value.trim() && !els.ocrResultB.value.trim()) {
+        showToast("錯誤：請先產生或貼上 OCR 結果。");
+        return;
+      }
+
+      const apiKeyMasked = apiKey.length > 10 ? (apiKey.substring(0, 6) + "..." + apiKey.substring(apiKey.length - 4)) : "Invalid";
+      const originalText = els.runModelAAnalysisButton.textContent;
+      els.runModelAAnalysisButton.disabled = true;
+      els.runModelAAnalysisButton.textContent = "☁️ 模型 A 分析中...";
+      els.nanoResult.value = `正在使用 ${modelA} 分析 OCR 結果 A/B，請稍候...`;
+
+      const startTime = Date.now();
+      try {
+        const res = await callGeminiTextApi(apiKey, modelA, finalPrompt);
+        const latencyMs = Date.now() - startTime;
+        const promptTokens = res.data.usageMetadata?.promptTokenCount || 0;
+        const candidatesTokens = res.data.usageMetadata?.candidatesTokenCount || 0;
+        const totalTokens = res.data.usageMetadata?.totalTokenCount || 0;
+        const estCostUsd = calculateCost(modelA, promptTokens, candidatesTokens);
+
+        if (!res.extractedText) {
+          throw new Error("模型 A 未回傳有效分析文字。");
+        }
+
+        els.nanoResult.value = res.extractedText;
+        showToast("🎉 Gemini 模型 A 分析完成！");
+        addLogEntry("Gemini 模型 A 分析成功", {
+          model: modelA,
+          apiKeyMasked,
+          promptSnippet: finalPrompt,
+          ocrResultSnippet: res.extractedText,
+          latencyMs,
+          httpStatus: res.httpStatus,
+          promptTokens,
+          candidatesTokens,
+          totalTokens,
+          estCostUsd,
+          rawResponse: res.rawText,
+          rawRequest: JSON.stringify({ model: modelA, promptText: finalPrompt })
+        });
+      } catch (err) {
+        const latencyMs = Date.now() - startTime;
+        console.error(err);
+        els.nanoResult.value = `模型 A 分析失敗: ${err.message || err}`;
+        showToast(`模型 A 分析失敗: ${err.message || err}`);
+        addLogEntry("Gemini 模型 A 分析失敗", {
+          model: modelA,
+          apiKeyMasked,
+          promptSnippet: finalPrompt,
+          ocrResultSnippet: err.message || err,
+          latencyMs,
+          httpStatus: err.message && err.message.includes("API 錯誤") ? parseInt(err.message.match(/\d+/)) : 500,
+          rawResponse: JSON.stringify({ error: err.message || err }),
+          rawRequest: JSON.stringify({ model: modelA, promptText: finalPrompt })
+        });
+      } finally {
+        els.runModelAAnalysisButton.disabled = false;
+        els.runModelAAnalysisButton.textContent = originalText;
       }
     }
 
@@ -2584,42 +2863,26 @@
 
     els.topbarDualOcrBtn.addEventListener("click", () => toggleDualOcrMode());
 
-    // Gemini Nano listeners
-    const NANO_PRESETS = {
-      compare: "請比對以下兩個 OCR 辨識結果的文字差異。\n\n【辨識模型資訊】\n- 結果 A 模型：{{MODEL_A}}\n- 結果 B 模型：{{MODEL_B}}\n\n請詳細列出不同點與字元遺漏或辨識錯字，並「盡量以 Markdown 表格」呈現差異對照（例如欄位包含「項目/差異處」、「結果 A ({{MODEL_A}})」、「結果 B ({{MODEL_B}})」、「分析備註」）。\n\n【結果 A】\n{{RESULT_A}}\n\n【結果 B】\n{{RESULT_B}}",
-      summary: "請針對辨識出來的文字進行摘要整理，並以乾淨的結構化條列格式輸出關鍵資訊：\n\n【辨識文字】\n{{RESULT_A}}",
-      translate: "請將以下辨識出的文字統一轉換為繁體中文，修正明顯的文字錯誤與語病，並保持原文段落結構：\n\n【辨識文字】\n{{RESULT_A}}",
-      custom: ""
-    };
-    els.nanoPromptInput.value = NANO_PRESETS.compare;
-    els.nanoPromptSelect.addEventListener("change", (e) => {
-      const presetKey = e.target.value;
-      if (NANO_PRESETS[presetKey] !== undefined) {
-        els.nanoPromptInput.value = NANO_PRESETS[presetKey];
-      }
-    });
+    // Gemini Nano and Gemini Model A analysis listeners
+    renderNanoTemplates();
+    els.nanoPromptSelect.addEventListener("change", loadSelectedNanoTemplate);
+    els.saveNanoTemplateButton.addEventListener("click", saveCurrentNanoTemplate);
+    els.createNanoTemplateButton.addEventListener("click", createNewNanoTemplate);
+    els.deleteNanoTemplateButton.addEventListener("click", deleteCurrentNanoTemplate);
+    els.restoreNanoTemplatesButton.addEventListener("click", restoreDefaultNanoTemplates);
 
     els.detectNanoBtn.addEventListener("click", detectGeminiNano);
     els.downloadNanoBtn.addEventListener("click", downloadGeminiNano);
     els.resetNanoBtn.addEventListener("click", clearNanoSession);
     els.runNanoButton.addEventListener("click", runNanoComparison);
+    els.runModelAAnalysisButton.addEventListener("click", runModelACloudAnalysis);
     els.copyNanoPromptBtn.addEventListener("click", () => {
       // Copyright (c) FALO X TAAT x Force Cheng 2026/6/1. All rights reserved.
-      const promptTemplateText = els.nanoPromptInput.value.trim();
-      if (!promptTemplateText) {
+      const finalPrompt = buildAnalysisPrompt();
+      if (!finalPrompt) {
         showToast("錯誤：比對分析 Prompt 不能為空。");
         return;
       }
-      const resA = els.ocrResult.value.trim();
-      const resB = els.ocrResultB.value.trim();
-      const modelA = els.modelSelect.value;
-      const modelB = els.modelSelectB.value;
-
-      const finalPrompt = promptTemplateText
-        .replaceAll("{{RESULT_A}}", resA)
-        .replaceAll("{{RESULT_B}}", resB)
-        .replaceAll("{{MODEL_A}}", modelA)
-        .replaceAll("{{MODEL_B}}", modelB);
 
       copyText(finalPrompt, "📋 組合字串複製成功！可直接貼給其他 AI 分析。");
       addLogEntry("手動複製組合 Prompt", { model: "手動比對/分析", rawResponse: `長度: ${finalPrompt.length}` });

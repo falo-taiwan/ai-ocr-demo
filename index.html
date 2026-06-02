@@ -419,33 +419,55 @@
       overflow: hidden;
       display: none;
       border: 1px solid var(--line);
-      cursor: move;
+      grid-template-rows: auto auto 1fr;
+      cursor: default;
     }
     .floating-image-viewport {
       width: 100%;
       height: 100%;
       overflow: auto;
-      display: grid;
-      place-items: center;
-      padding: 42px 12px 12px;
+      display: block;
+      padding: 14px;
       cursor: default;
     }
+    .floating-content {
+      width: max-content;
+      min-width: 100%;
+      min-height: 100%;
+      display: grid;
+      place-items: center;
+    }
     .floating-window img {
+      display: block;
       max-width: none;
       max-height: none;
       object-fit: contain;
       pointer-events: none;
       user-select: none;
-      transform-origin: center center;
-      transition: transform 0.12s ease;
+      transition: width 0.12s ease;
     }
     .floating-toolbar {
-      position: absolute;
-      top: 8px;
-      right: 8px;
       display: flex;
+      flex-wrap: wrap;
+      align-items: center;
       gap: 6px;
+      padding: 8px;
+      background: rgba(15, 23, 42, 0.86);
+      border-bottom: 1px solid rgba(255, 255, 255, 0.12);
       z-index: 2010;
+      cursor: move;
+      user-select: none;
+    }
+    .floating-title-row {
+      border-bottom: 1px solid rgba(255, 255, 255, 0.10);
+      background: rgba(15, 23, 42, 0.72);
+      color: rgba(255, 255, 255, 0.88);
+      font-size: 13px;
+      font-weight: 800;
+      padding: 7px 12px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
     }
     .floating-tool-btn {
       background: rgba(15, 23, 42, 0.6);
@@ -464,11 +486,32 @@
       transition: opacity 0.2s ease;
       padding: 0 8px;
     }
+    .floating-tool-btn.active {
+      background: rgba(37, 99, 235, 0.9);
+    }
     .floating-tool-btn:hover {
       background: rgba(37, 99, 235, 0.85);
     }
     #floatingCloseBtn:hover {
       background: var(--danger);
+    }
+    .floating-opacity-control {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding-left: 6px;
+      border-left: 1px solid rgba(255, 255, 255, 0.14);
+      color: rgba(255, 255, 255, 0.78);
+      font-size: 12px;
+      font-weight: 800;
+    }
+    .floating-opacity-control input {
+      width: 78px;
+      accent-color: #60a5fa;
+    }
+    .floating-opacity-value {
+      width: 34px;
+      text-align: right;
     }
     .image-preview img {
       cursor: pointer;
@@ -913,13 +956,25 @@
   <!-- Floating Image Window -->
   <div class="floating-window" id="floatingWindow">
     <div class="floating-toolbar">
+      <button class="floating-tool-btn" id="floatingCloseBtn" type="button" aria-label="Close floating preview">&times;</button>
       <button class="floating-tool-btn" id="floatingZoomOutBtn" type="button" aria-label="Zoom out">-</button>
       <button class="floating-tool-btn" id="floatingZoomResetBtn" type="button" aria-label="Reset zoom">100%</button>
       <button class="floating-tool-btn" id="floatingZoomInBtn" type="button" aria-label="Zoom in">+</button>
-      <button class="floating-tool-btn" id="floatingCloseBtn" type="button" aria-label="Close floating preview">&times;</button>
+      <button class="floating-tool-btn" data-floating-size="small" type="button" aria-label="Small preview window">小</button>
+      <button class="floating-tool-btn" data-floating-size="medium" type="button" aria-label="Medium preview window">中</button>
+      <button class="floating-tool-btn" data-floating-size="large" type="button" aria-label="Large preview window">大</button>
+      <button class="floating-tool-btn" data-floating-size="wide" type="button" aria-label="Wide preview window">滿</button>
+      <label class="floating-opacity-control" for="floatingOpacityRange">
+        透明
+        <input id="floatingOpacityRange" type="range" min="40" max="100" value="96">
+        <span class="floating-opacity-value" id="floatingOpacityValue">96%</span>
+      </label>
     </div>
+    <div class="floating-title-row" id="floatingTitle">圖片預覽</div>
     <div class="floating-image-viewport" id="floatingImageViewport">
-      <img id="floatingImg" src="" alt="Floating Preview">
+      <div class="floating-content" id="floatingContent">
+        <img id="floatingImg" src="" alt="Floating Preview">
+      </div>
     </div>
   </div>
 
@@ -1027,7 +1082,31 @@
     let dualOcrMode = false;
     let nanoSession = null;
     let previewImageUrl = "";
+    let previewImageName = "圖片預覽";
+    let floatingImageOrientation = "neutral";
+    let activeFloatingSize = "medium";
+    let floatingNaturalWidth = 0;
+    let floatingNaturalHeight = 0;
     let floatingZoom = 1;
+    const floatingZoomSteps = [0.10, 0.20, 0.50, 0.70, 1, 1.50, 2, 3, 4];
+    const floatingSizePresets = {
+      portrait: {
+        small: { width: 420, height: 560 },
+        medium: { width: 560, height: 760 },
+        large: { width: 720, height: 920 }
+      },
+      landscape: {
+        small: { width: 560, height: 420 },
+        medium: { width: 860, height: 560 },
+        large: { width: 1060, height: 700 }
+      },
+      neutral: {
+        small: { width: 420, height: 320 },
+        medium: { width: 720, height: 520 },
+        large: { width: 960, height: 680 }
+      },
+      wide: { widthRatio: 0.92, heightRatio: 0.82 }
+    };
 
     const els = {
       installButton: document.getElementById("installButton"),
@@ -1085,10 +1164,14 @@
       floatingWindow: document.getElementById("floatingWindow"),
       floatingCloseBtn: document.getElementById("floatingCloseBtn"),
       floatingImageViewport: document.getElementById("floatingImageViewport"),
+      floatingContent: document.getElementById("floatingContent"),
       floatingImg: document.getElementById("floatingImg"),
+      floatingTitle: document.getElementById("floatingTitle"),
       floatingZoomOutBtn: document.getElementById("floatingZoomOutBtn"),
       floatingZoomResetBtn: document.getElementById("floatingZoomResetBtn"),
       floatingZoomInBtn: document.getElementById("floatingZoomInBtn"),
+      floatingOpacityRange: document.getElementById("floatingOpacityRange"),
+      floatingOpacityValue: document.getElementById("floatingOpacityValue"),
       // Nano Elements
       nanoStatusBadge: document.getElementById("nanoStatusBadge"),
       detectNanoBtn: document.getElementById("detectNanoBtn"),
@@ -1275,8 +1358,9 @@
       let initialTop = 0;
 
       el.addEventListener("mousedown", (e) => {
-        // Keep toolbar buttons clickable while the preview window remains draggable.
-        if (e.target.closest(".floating-tool-btn")) return;
+        // Drag from the toolbar/title area only; keep controls and scroll viewport usable.
+        if (!e.target.closest(".floating-toolbar") && !e.target.closest(".floating-title-row")) return;
+        if (e.target.closest(".floating-tool-btn") || e.target.closest("input")) return;
         
         // Prevent dragging when resizing at the bottom-right corner
         const rect = el.getBoundingClientRect();
@@ -1996,6 +2080,8 @@
       const image = document.createElement("img");
       image.src = previewImageUrl;
       image.alt = file.name;
+      previewImageName = file.name;
+      image.addEventListener("load", () => updateFloatingImageDefaults(image));
       els.imagePreview.replaceChildren(image);
     }
 
@@ -2006,23 +2092,81 @@
     }
 
     function setFloatingZoom(nextZoom) {
-      floatingZoom = Math.max(0.25, Math.min(4, nextZoom));
-      els.floatingImg.style.transform = `scale(${floatingZoom})`;
+      floatingZoom = Math.max(0.10, Math.min(4, nextZoom));
+      const baseWidth = floatingNaturalWidth || els.floatingImg.naturalWidth || 900;
+      els.floatingImg.style.width = `${Math.max(80, Math.round(baseWidth * floatingZoom))}px`;
+      els.floatingImg.style.height = "auto";
       els.floatingZoomResetBtn.textContent = `${Math.round(floatingZoom * 100)}%`;
+    }
+
+    function floatingZoomOut() {
+      const currentIndex = floatingZoomSteps.findIndex((step) => step >= floatingZoom - 0.001);
+      const nextIndex = Math.max(0, currentIndex - 1);
+      setFloatingZoom(floatingZoomSteps[nextIndex]);
+    }
+
+    function floatingZoomIn() {
+      const currentIndex = floatingZoomSteps.findIndex((step) => step >= floatingZoom - 0.001);
+      const nextIndex = Math.min(floatingZoomSteps.length - 1, currentIndex + 1);
+      setFloatingZoom(floatingZoomSteps[nextIndex]);
+    }
+
+    function updateFloatingImageDefaults(image) {
+      if (!image.naturalWidth || !image.naturalHeight) return;
+      floatingNaturalWidth = image.naturalWidth;
+      floatingNaturalHeight = image.naturalHeight;
+      floatingImageOrientation = floatingNaturalHeight > floatingNaturalWidth ? "portrait" : "landscape";
+      activeFloatingSize = "medium";
+      updateFloatingSizeButtons();
+    }
+
+    function getFloatingSizePreset(name) {
+      if (name === "wide") return floatingSizePresets.wide;
+      const group = floatingSizePresets[floatingImageOrientation] || floatingSizePresets.neutral;
+      return group[name] || floatingSizePresets.neutral.medium;
+    }
+
+    function setFloatingSizePreset(name) {
+      const preset = getFloatingSizePreset(name);
+      activeFloatingSize = name;
+      const width = preset.widthRatio ? Math.round(window.innerWidth * preset.widthRatio) : preset.width;
+      const height = preset.heightRatio ? Math.round(window.innerHeight * preset.heightRatio) : preset.height;
+      const safeWidth = Math.min(width, window.innerWidth - 24);
+      const safeHeight = Math.min(height, window.innerHeight - 24);
+      els.floatingWindow.style.width = `${Math.max(320, safeWidth)}px`;
+      els.floatingWindow.style.height = `${Math.max(240, safeHeight)}px`;
+      els.floatingWindow.style.left = `${Math.max(12, Math.round((window.innerWidth - safeWidth) / 2))}px`;
+      els.floatingWindow.style.top = `${Math.max(12, Math.round((window.innerHeight - safeHeight) / 2))}px`;
+      updateFloatingSizeButtons();
+    }
+
+    function updateFloatingSizeButtons() {
+      document.querySelectorAll("[data-floating-size]").forEach((button) => {
+        button.classList.toggle("active", button.dataset.floatingSize === activeFloatingSize);
+      });
+    }
+
+    function setFloatingOpacity(value) {
+      const opacity = Math.max(40, Math.min(100, Number(value)));
+      els.floatingWindow.style.opacity = String(opacity / 100);
+      els.floatingOpacityRange.value = String(opacity);
+      els.floatingOpacityValue.textContent = `${opacity}%`;
     }
 
     function openFloatingPreview() {
       if (!previewImageUrl) return;
-      const width = Math.min(820, window.innerWidth - 48);
-      const height = Math.min(640, window.innerHeight - 48);
-      els.floatingWindow.style.width = `${Math.max(320, width)}px`;
-      els.floatingWindow.style.height = `${Math.max(240, height)}px`;
-      els.floatingWindow.style.left = `${Math.max(12, Math.round((window.innerWidth - width) / 2))}px`;
-      els.floatingWindow.style.top = `${Math.max(12, Math.round((window.innerHeight - height) / 2))}px`;
+      els.floatingTitle.textContent = previewImageName || "圖片預覽";
       els.floatingImg.src = previewImageUrl;
+      els.floatingImg.onload = () => {
+        updateFloatingImageDefaults(els.floatingImg);
+        setFloatingSizePreset(activeFloatingSize);
+        setFloatingZoom(1);
+      };
       els.floatingImageViewport.scrollTop = 0;
       els.floatingImageViewport.scrollLeft = 0;
-      els.floatingWindow.style.display = "block";
+      els.floatingWindow.style.display = "grid";
+      setFloatingOpacity(els.floatingOpacityRange.value);
+      setFloatingSizePreset(activeFloatingSize);
       setFloatingZoom(1);
     }
 
@@ -2941,9 +3085,13 @@
     // Floating image preview window triggers
     els.imagePreview.addEventListener("click", openFloatingPreview);
     els.floatingCloseBtn.addEventListener("click", closeFloatingPreview);
-    els.floatingZoomOutBtn.addEventListener("click", () => setFloatingZoom(floatingZoom - 0.25));
+    els.floatingZoomOutBtn.addEventListener("click", floatingZoomOut);
     els.floatingZoomResetBtn.addEventListener("click", () => setFloatingZoom(1));
-    els.floatingZoomInBtn.addEventListener("click", () => setFloatingZoom(floatingZoom + 0.25));
+    els.floatingZoomInBtn.addEventListener("click", floatingZoomIn);
+    els.floatingOpacityRange.addEventListener("input", (event) => setFloatingOpacity(event.target.value));
+    document.querySelectorAll("[data-floating-size]").forEach((button) => {
+      button.addEventListener("click", () => setFloatingSizePreset(button.dataset.floatingSize));
+    });
     initDraggableWindow(els.floatingWindow);
 
     els.topbarDualOcrBtn.addEventListener("click", () => toggleDualOcrMode());

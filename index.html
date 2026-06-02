@@ -550,11 +550,11 @@
           <span>選擇圖片後會在這裡預覽。可支援直接執行 Gemini 線上辨識。</span>
         </div>
         <div class="field">
-          <label for="longSideSelect">影像壓縮最大長邊</label>
+          <label for="longSideSelect">辨識影像清晰度</label>
           <select id="longSideSelect">
-            <option value="768">768 px (省流量/試用)</option>
-            <option value="1280" selected>1280 px (平衡/日常)</option>
-            <option value="1600">1600 px (高精度/細緻)</option>
+            <option value="768">低</option>
+            <option value="1280" selected>中</option>
+            <option value="1600">高</option>
           </select>
         </div>
         <div class="field">
@@ -585,12 +585,11 @@
         </div>
         <button class="button primary" id="runOcrButton" type="button" style="width: 100%; min-height: 44px; margin-top: 10px; font-size: 15px;">⚡ 開始 Gemini OCR 辨識</button>
         <div class="pill-row">
-          <span class="pill">WebP Output</span>
-          <span class="pill">Auto Aspect Ratio</span>
-          <span class="pill">No Upscale</span>
-          <span class="pill">Local API Key</span>
+          <span class="pill">動態最佳化</span>
+          <span class="pill">隱私保護</span>
+          <span class="pill">本機金鑰</span>
         </div>
-        <p class="note">影像處理策略先採教材版提示：不要任意放大小圖，必要時轉 WebP 768 或 PNG standard；輸出應標示不確定處。</p>
+        <p class="note">說明：建議根據實際狀況，選用解析度更高的圖像以獲得更佳辨識效果。</p>
       </div>
     </aside>
 
